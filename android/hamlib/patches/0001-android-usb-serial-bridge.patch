@@ -1,0 +1,138 @@
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 0e940b3..2f11b96 100755
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -3,7 +3,7 @@ BUILT_SOURCES = $(builddir)/hamlibdatetime.h
+ 
+ DISTCLEANFILES = hamlibdatetime.h
+ 
+-RIGSRC = hamlibdatetime.h rig.c serial.c serial.h misc.c misc.h register.c register.h event.c \
++RIGSRC = hamlibdatetime.h rig.c serial.c serial.h android_serial_bridge.c android_serial_bridge.h misc.c misc.h register.c register.h event.c \
+ 	event.h cal.c cal.h conf.c tones.c tones.h rotator.c locator.c rot_reg.c \
+ 	rot_conf.c rot_conf.h rot_settings.c rot_ext.c iofunc.c iofunc.h ext.c \
+    	mem.c settings.c parallel.c parallel.h usb_port.c usb_port.h debug.c \
+diff --git a/src/misc.c b/src/misc.c
+index fed8cbd..9c83a8d 100644
+--- a/src/misc.c
++++ b/src/misc.c
+@@ -2146,6 +2146,11 @@ int HAMLIB_API parse_hoststr(char *hoststr, int hoststr_len, char host[256],
+     // Handle device names 1st
+     if (strstr(hoststr, "/dev")) { return -1; }
+ 
++#ifdef __ANDROID__
++    // android-usb: paths are serial, not network host strings
++    if (strncasecmp(hoststr, "android-usb:", 12) == 0) { return -1; }
++#endif
++
+     if (strstr(hoststr, "/")) { return -1; } // probably a path so not a hoststr
+ 
+     if (strncasecmp(hoststr, "com", 3) == 0) { return -1; }
+diff --git a/src/rig.c b/src/rig.c
+index 9259f55..1c8a5ab 100644
+--- a/src/rig.c
++++ b/src/rig.c
+@@ -8519,7 +8519,9 @@ static int async_data_handler_stop(RIG *rig)
+         {
+             // all cleanup is done in this function so we can kill thread
+             // Windows was taking 30 seconds to stop without this
++#ifndef __ANDROID__
+             pthread_cancel(async_data_handler_priv->thread_id);
++#endif
+             int err = pthread_join(async_data_handler_priv->thread_id, NULL);
+ 
+             if (err)
+@@ -8576,7 +8578,9 @@ static int morse_data_handler_stop(RIG *rig)
+         {
+             // all cleanup is done in this function so we can kill thread
+             // Windows was taking 30 seconds to stop without this
++#ifndef __ANDROID__
+             pthread_cancel(morse_data_handler_priv->thread_id);
++#endif
+             int err = pthread_join(morse_data_handler_priv->thread_id, NULL);
+ 
+             if (err)
+diff --git a/src/serial.c b/src/serial.c
+index 6fdecc7..386c28e 100644
+--- a/src/serial.c
++++ b/src/serial.c
+@@ -77,6 +77,10 @@
+ //! @endcond
+ 
+ #include "serial.h"
++
++#ifdef __ANDROID__
++#include "android_serial_bridge.h"
++#endif
+ #include "misc.h"
+ 
+ #ifdef HAVE_SYS_IOCCOM_H
+@@ -226,6 +230,13 @@ int HAMLIB_API serial_open(hamlib_port_t *rp)
+         return (-RIG_EINVAL);
+     }
+ 
++#ifdef __ANDROID__
++    if (hlx_android_serial_is_path(rp->pathname))
++    {
++        return hlx_android_serial_open(rp);
++    }
++#endif
++
+ #if defined(WIN32)
+     int retcode = check_com_port_in_use(rp->pathname);
+ 
+@@ -854,6 +865,13 @@ int HAMLIB_API serial_flush(hamlib_port_t *p)
+ 
+ #endif
+ 
++#ifdef __ANDROID__
++    if (hlx_android_serial_is_path(p->pathname))
++    {
++        return hlx_android_serial_flush(p);
++    }
++#endif
++
+     if (p->fd == uh_ptt_fd || p->fd == uh_radio_fd || p->flushx)
+     {
+         /*
+@@ -1006,6 +1024,13 @@ int ser_close(hamlib_port_t *p)
+ 
+     //rig_debug(RIG_DEBUG_VERBOSE, "%s called\n", __func__);
+ 
++#ifdef __ANDROID__
++    if (hlx_android_serial_is_path(p->pathname))
++    {
++        return hlx_android_serial_close(p);
++    }
++#endif
++
+     /*
+      * For microHam devices, do not close the
+      * socket via close but call a service routine
+@@ -1122,6 +1147,13 @@ int HAMLIB_API ser_set_rts(hamlib_port_t *p, int state)
+         return (RIG_OK);
+     }
+ 
++#ifdef __ANDROID__
++    if (hlx_android_serial_is_path(p->pathname))
++    {
++        return hlx_android_serial_set_rts(p, state);
++    }
++#endif
++
+ #if defined(TIOCMBIS) && defined(TIOCMBIC)
+     rc = IOCTL(p->fd, state ? TIOCMBIS : TIOCMBIC, &y);
+ #else
+@@ -1192,6 +1224,13 @@ int HAMLIB_API ser_set_dtr(hamlib_port_t *p, int state)
+ 
+     rig_debug(RIG_DEBUG_VERBOSE, "%s: DTR=%d\n", __func__, state);
+ 
++#ifdef __ANDROID__
++    if (hlx_android_serial_is_path(p->pathname))
++    {
++        return hlx_android_serial_set_dtr(p, state);
++    }
++#endif
++
+     // silently ignore on microHam RADIO channel,
+     // but (un)set ptt on microHam PTT channel.
+     if (p->fd == uh_radio_fd)
