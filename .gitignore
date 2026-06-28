@@ -20,6 +20,10 @@ erl_crash.dump
 # Compiled NIF (built from source by Rustler on the consumer side)
 /priv/native/
 
+# Third-party reference material studied locally (JS8Call-improved sources):
+# kept out of the repo — see docs/ANDROID_BRIDGE.md for the distilled notes.
+.ref-*
+
 # OS / editor
 .DS_Store
 *.swp
